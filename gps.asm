@@ -50,12 +50,19 @@
 	out		MCUCR, r16
 .endmacro
 
-; A macro to copy r17 = @1 bytes from program memory label Z = @0 to X.
+; A macro to copy r17 = @1 bytes from program memory address Z = @0 to X.
 .macro		copy_PM
 	ldi		ZH, high(@0 << 1)
 	ldi		ZL, low(@0 << 1)
 	ldi		r17, @1
 	rcall	PM_read
+.endmacro
+
+; A macro to copy r17 = @1 bytes from EEPROM address r18 = @0 to X.
+.macro		copy_EEPROM
+	ldi		r18, @0
+	ldi		r17, @1
+	rcall	EEPROM_read
 .endmacro
 
 ; =============================================================================
@@ -81,28 +88,21 @@
 ; Program space constants
 ; -----------------------------------------------------------------------------
 
-; FBus SMS frame start. 0xFF bytes need to be filled with valid frame length
-; after assembling the entire frame.
+; FBus SMS frame start. The 0xFF byte needs to be filled with valid frame
+; length after assembling the entire frame.
 tpl_SMS_frame_start:
-	.db 0x1E, 0x00, 0x0C, 0x02, 0xFF, 0xFF,  0x00, 0x01, 0x00, 0x01, 0x02, 0x00
+	.db 0x1E, 0x00, 0x0C, 0x02, 0x00, 0xFF, 0x00, 0x01, 0x00, 0x01, 0x02, 0x00
 
 ; Transport Protocol Data Unit descriptor. Byte 3 is set to indicate 8-bit data
 ; as opposed to the default 7-bit GSM alphabet to save us the hassle of
 ; encoding (see GSM 03.40).
+; Byte 4 is to be filled with user data (actual message) length.
 tpl_SMS_TPDU:
 	.db	0x15, 0x00, 0x00, 0x04, 0xFF
 
 ; Validity Period descriptor.
 tpl_SMS_VP:
 	.db 0xA7, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-
-; FBus frame footer.
-; Byte 1 is to be filled with the FBus Packet Sequence Number.
-; Byte 2 is a padding byte and may be skipped if the message length is already
-; even.
-; Bytes 3 and 4 comprise the FBus checksum.
-tpl_SMS_frame_end:
-	.db 0x00, 0xFF, 0x00, 0xFF, 0xFF
 
 tpl_SMS_report_online:
 	.db "avr-fbus-gps online"
@@ -112,6 +112,9 @@ tpl_SMS_report_online:
 ; -----------------------------------------------------------------------------
 
 reset:
+	ldi		r16, 1
+	ldi		r17, 2
+	cp		r16, r17
 	; set port B pins 2-7 as inputs, pins 0-1 as outputs
 	ldi		r16, 0x03
 	out		DDRB, r16
@@ -122,7 +125,7 @@ reset:
 	; initialize the stack pointer - set it to the a part of the register file
 	; to save on SRAM, we're not getting the stack any deeper than 3 levels
 	; anyway
-	ldi		r16, 0x05
+	ldi		r16, 0x08
 	out		SPL, r16
 
 	; wait a single timer0 cycle for the GPS to start up, too
@@ -157,26 +160,16 @@ wait:
 	ldi		r16, ENABLE_FBUS
 	out		PORTB, r16
 
+	; initialize FBus packet sequence number
+	ldi		r25, 0
+
 	; report in to the "nexus" - send an SMS to the registered number
 	; assemble the appropriate FBus frame
-	ldi		XL,	low(SMS_frame_start)
-	ldi		XH, high(SMS_frame_start)
-	; start with the frame start
-	copy_PM	tpl_SMS_frame_start, 12
-	; read the SMS message centre from EEPROM into the frame
-	rcall	FBus_read_SMSC
-	; write the Transport Protocol Data Unit descriptor into the frame
-	copy_PM	tpl_SMS_TPDU, 5
-	; read the destination number from EEPROM into the frame
-	rcall	FBus_read_dest
-	; write the Validity Period descriptor into the frame
-	copy_PM	tpl_SMS_VP, 7
+	rcall	FBus_start
 	; write the report message into the frame
-	copy_PM	tpl_SMS_report_online, 19
-	; write the frame footer
-	copy_PM	tpl_SMS_frame_end, 5
-	; make sure all length bytes and checksums are OK
-	rcall	FBus_validate
+	copy_PM	tpl_SMS_report_online, 19	
+	; finish off the frame and fill in all length bytes and calculate checksums
+	rcall	FBus_finish
 
 	; synchronize the phone's UART
 	rcall	FBus_sync
@@ -217,17 +210,21 @@ RX_complete:
 ; Utility procedures
 ; -----------------------------------------------------------------------------
 
-; Reads the byte at r17 from EEPROM into r16.
+; Reads the byte at r18 from EEPROM into r16.
 EEPROM_read:
 	; wait for completion of previous write
 	sbic	EECR, EEPE
 	rjmp 	EEPROM_read
-	; set up address (r17) in address register
-	out 	EEAR, r17
+	; set up address (r18) in address register
+	out 	EEAR, r18
 	; start eeprom read by writing EERE
 	sbi 	EECR, EERE
 	; read data from data register
-	in r16, EEDR
+	in		r16, EEDR
+	st		X+, r16
+	inc		r18
+	dec		r17
+	brne	EEPROM_read
 ret
 
 ; Reads r17 bytes from Z into X.
@@ -260,33 +257,74 @@ loop_sync:
 	brne	loop_sync
 ret
 
-; Reads the SMS service centre from EEPROM into the string pointed by reg. X.
-FBus_read_SMSC:
-	ldi		r18, 12
-	ldi		r17, 0x00
-SMSC_loop:
-	rcall	EEPROM_read
-	st		X+, r16
-	inc		r17
-	dec		r18
-	brne	SMSC_loop
-ret
-
-; Reads the destination number from EEPROM into the string pointed by reg. X.
-FBus_read_dest:
-	ldi		r18, 12
-	ldi		r17, 0x0C
-dest_loop:
-	rcall	EEPROM_read
-	st		X+, r16
-	inc		r17
-	dec		r18
-	brne	SMSC_loop
+; Starts the FBus SMS frame.
+FBus_start:
+	ldi		XL,	low(SMS_frame_start)
+	ldi		XH, high(SMS_frame_start)
+	; start with the frame start
+	copy_PM	tpl_SMS_frame_start, 12
+	; read the SMS message centre from EEPROM into the frame
+	copy_EEPROM	0x00, 12
+	; write the Transport Protocol Data Unit descriptor into the frame
+	copy_PM	tpl_SMS_TPDU, 5
+	; read the destination number from EEPROM into the frame
+	copy_EEPROM	0x0C, 12
+	; write the Validity Period descriptor into the frame
+	copy_PM	tpl_SMS_VP, 7
 ret
 
 ; Processes the entire frame, calculating frame and message lengths, checksums
 ; and adjusting padding bytes.
-FBus_validate:
+FBus_finish:
+	; write in the number of packets left to transmit (always 0)
+	ldi		r16, 0
+	st		X+, r16
+	; write in the sequence number
+	st		X+, r25
+	inc		r25
+	andi	r25, 0x07
+
+	; get the length of the entire frame; no need to work on the high bytes,
+	; we only have 128 bytes starting at 0x60, so the last valid address is
+	; 0xDF, which obviously fits in the low byte
+	mov		r20, XL
+	subi	r20, low(SMS_frame_start)
+	; subtract FBus header length to get the frame length
+	subi	r20, 6
+
+	; add a padding byte, if necessary
+	mov		r16, XL
+	andi	r16, 0x01
+	breq	skip
+	ldi		r16, 0
+	st		X+, r16
+skip:
+
+	; write the frame length
+	ldi		YL, low(SMS_frame_start)
+	ldi		YH, high(SMS_frame_start)
+	adiw	YL, 5
+	st		Y, r20
+	; calculate and write the message content length
+	subi	r20, (6 + 12 + 5 + 12 + 7 + 2)
+	adiw	YL, (6 + 12 + 5)
+	st		Y, r20
+	
+	; FBus checksum: r18 - high byte, r17 - low byte
+	ldi		r18, 0
+	ldi		r17, 0
+	ldi		YL, low(SMS_frame_start)
+	ldi		YH, high(SMS_frame_start)
+checksum:
+	ld		r16, Y+
+	eor		r18, r16
+	ld		r16, Y+
+	eor		r17, r16
+	cp		YL, XL
+	brlo	checksum
+	; store the checksum
+	st		X+, r18
+	st		X+, r17
 ret
 
 ; =============================================================================
@@ -301,7 +339,7 @@ SMS_frame_start:	.byte	12
 SMS_SMSC_number:	.byte	12
 SMS_TPDU:			.byte	5
 SMS_dest_number:	.byte	12
-SMS_VP:				.byte	2
+SMS_VP:				.byte	7
 SMS_user_data:
 
 .eseg
