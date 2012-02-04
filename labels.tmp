@@ -14,15 +14,36 @@
  </OBJECT_FILES>
  <HEX_FILES>
   <FILE>C:\projects\smiw\gps\gps.hex</FILE>
+  <FILE>C:\projects\smiw\gps\gps.eep</FILE>
  </HEX_FILES>
  <OUTPUT_FILES>
   <FILE>C:\projects\smiw\gps\gps.map</FILE>
  </OUTPUT_FILES>
  <LABELS>
-  <reset><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>20</LINE></reset>
-  <timer_overflow><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>30</LINE></timer_overflow>
-  <RX_complete><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>32</LINE></RX_complete>
-  <TX_complete><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>34</LINE></TX_complete>
-  <halt><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>26</LINE></halt>
+  <reset><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>114</LINE></reset>
+  <RX_complete><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>212</LINE></RX_complete>
+  <tpl_SMS_frame_start><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>86</LINE></tpl_SMS_frame_start>
+  <tpl_SMS_TPDU><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>92</LINE></tpl_SMS_TPDU>
+  <tpl_SMS_VP><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>96</LINE></tpl_SMS_VP>
+  <tpl_SMS_frame_end><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>104</LINE></tpl_SMS_frame_end>
+  <tpl_SMS_report_online><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>107</LINE></tpl_SMS_report_online>
+  <wait><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>136</LINE></wait>
+  <SMS_frame_start><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>300</LINE></SMS_frame_start>
+  <PM_read><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>234</LINE></PM_read>
+  <FBus_read_SMSC><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>264</LINE></FBus_read_SMSC>
+  <FBus_read_dest><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>276</LINE></FBus_read_dest>
+  <FBus_validate><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>289</LINE></FBus_validate>
+  <FBus_sync><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>254</LINE></FBus_sync>
+  <idle><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>201</LINE></idle>
+  <EEPROM_read><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>221</LINE></EEPROM_read>
+  <UART_Tx><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>242</LINE></UART_Tx>
+  <loop_sync><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>257</LINE></loop_sync>
+  <SMSC_loop><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>267</LINE></SMSC_loop>
+  <dest_loop><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>279</LINE></dest_loop>
+  <SMS_SMSC_number><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>301</LINE></SMS_SMSC_number>
+  <SMS_TPDU><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>302</LINE></SMS_TPDU>
+  <SMS_dest_number><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>303</LINE></SMS_dest_number>
+  <SMS_VP><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>304</LINE></SMS_VP>
+  <SMS_user_data><FILE>C:\projects\smiw\gps\gps.asm</FILE><LINE>305</LINE></SMS_user_data>
  </LABELS>
 </ASSEMBLER_INFO>
