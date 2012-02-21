@@ -31,10 +31,15 @@
 ; UBRR setting for 115200 baud.
 .equ	UBRR_115k2	=	1
 
-; Port B value for enabling FBus comms - low on PB.0, high on PB.1.
-.equ	ENABLE_FBUS	=	0x02
-; Port B value for enabling GPS comms - high on PB.0, low on PB.1.
-.equ	ENABLE_GPS	=	0x01
+; Port B bit number for FBus comms enable
+.equ	ENABLE_FBUS	=	0
+; Port B bit number for GPS comms enable
+.equ	ENABLE_GPS	=	1
+; Port B bit number for fix status LED
+.equ	ENABLE_LED	=	2
+
+; Port B bit number for the debug fix override switch.
+.equ	FIXOVRSW	=	3
 
 ; GPS parsing state: awaiting frame start. All input is ignored until a '$'
 ; character is received.
@@ -123,9 +128,6 @@
 .org	0
 	rjmp	reset
 
-;.org	OVF1addr
-;	rjmp	timer_overflow
-
 .org	URXCaddr
 	rjmp	RX_complete
 
@@ -157,15 +159,16 @@ tpl_SMS_report_online:
 ; -----------------------------------------------------------------------------
 
 reset:
+	; set port B pins 3-7 as inputs, pins 0-2 as outputs
+	ldi		r16, 0x07
+	out		DDRB, r16
+	; set port B initial state, i.e. don't enable any of the UART devices, set
+	; pull up on the fix override switch
+	ldi		r16, 0x07 | (1 << FIXOVRSW)
+	out		PORTB, r16
+
 	; no GPS fix yet
 	ldi		GPSFIX, 0
-
-	; set port B pins 2-7 as inputs, pins 0-1 as outputs
-	ldi		r16, 0x03
-	out		DDRB, r16
-	; set PB0 and PB1 to high, i.e. don't enable any of the UART devices
-	ldi		r16, 0x03
-	out		PORTB, r16
 
 	; initialize the stack pointer - set it to the a part of the register file
 	; to save on SRAM, we're not getting the stack any deeper than 3 levels
@@ -244,7 +247,7 @@ RX_complete:
 	cpi		GPSSR, GPSS_RMC_COORDS
 	breq	GPS_RMC_coords
 	cpi		GPSSR, GPSS_RMC_SPEED
-	breq	GPS_RMC_speed
+	breq	GPS_RMC_speed_proxy
 	cpi		GPSSR, GPSS_RMC_COURSE
 	breq	GPS_RMC_course_proxy
 
@@ -307,6 +310,7 @@ GPS_GSA_mode_2_fix:
 	; the mode is either 1, 2 or 3; 1 means no fix 
 	subi	r16, '1'
 	mov		GPSFIX, r16
+	rcall	update_fix_LED
 	; we don't care about the remainder of the frame, switch state back to idle
 	ldi		GPSCNT, 0
 	ldi		GPSSR, GPSS_IDLE
@@ -318,6 +322,9 @@ RX_skip_proxy:
 ; Proxy label, this one is too far for branch instructions addressing.
 GPS_RMC_course_proxy:
 	rjmp	GPS_RMC_course
+; Proxy label, this one is too far for branch instructions addressing.
+GPS_RMC_speed_proxy:
+	rjmp	GPS_RMC_speed
 
 GPS_RMC_time:
 	; commit if buffer already full
@@ -371,15 +378,16 @@ GPS_RMC_course:
 GPS_commit:
 	; is there a fix available?
 	cpi		GPSFIX, 0
-	breq	RX_skip
+	breq	GPS_commit_reset
 	; yes, there is! finish the SMS frame and send it!
-	rjmp	FBus_finish
+	rcall	FBus_finish
 	; switch to FBus comms
 	rcall	UART_to_FBus
 	rcall	FBus_sync
 	rcall	FBus_send
 	; restore GPS comms
 	rcall	UART_to_GPS
+GPS_commit_reset:
 	; revert GPS state
 	ldi		GPSCNT, 0
 	ldi		GPSSR, GPSS_IDLE
@@ -423,7 +431,7 @@ ret
 UART_Tx:
 	; wait for empty buffer
 	sbis	UCSRA, UDRE
-	;rjmp	UART_Tx
+	rjmp	UART_Tx
 	out		UDR, r16
 ret
 
@@ -438,7 +446,9 @@ ret
 ; Switches UART to FBus comms mode.
 UART_to_FBus:
 	; set low on PB.1
-	ldi		r16, ENABLE_FBUS
+	in		r16, PORTB
+	sbr		r16, (1 << ENABLE_GPS)
+	cbr		r16, (1 << ENABLE_FBUS)
 	out		PORTB, r16
 	; set the baud rate to 115k2
 	ldi		r16, UBRR_115k2
@@ -454,7 +464,9 @@ ret
 ; Switches UART to GPS comms mode.
 UART_to_GPS:
 	; set low on PB.0
-	ldi		r16, ENABLE_GPS
+	in		r16, PORTB
+	cbr		r16, (1 << ENABLE_GPS)
+	sbr		r16, (1 << ENABLE_FBUS)
 	out		PORTB, r16
 	; set the baud rate to 9600
 	ldi		r16, UBRR_9600
@@ -465,6 +477,27 @@ UART_to_GPS:
 	in		r16, UCSRB
 	ori		r16, (1 << RXCIE)
 	out		UCSRB, r16
+ret
+
+; Updates the fix status LED to reflect the internal status.
+update_fix_LED:
+	; handle the fix override switch
+	in		r16, PINB
+	andi	r16, (1 << FIXOVRSW)
+	cpi		r16, 0
+	brne	fix_override_skip
+	ldi		GPSFIX, 1
+fix_override_skip:
+	; set the fix status LED accordingly
+	in		r16, PORTB
+	cpi		GPSFIX, 0
+	breq	LED_off	
+	andi	r16, ~(1 << ENABLE_LED)
+	out		PORTB, r16
+	ret
+LED_off:
+	ori		r16, (1 << ENABLE_LED)
+	out		PORTB, r16
 ret
 
 ; =============================================================================
