@@ -170,10 +170,8 @@ reset:
 	; no GPS fix yet
 	ldi		GPSFIX, 0
 
-	; initialize the stack pointer - set it to the a part of the register file
-	; to save on SRAM, we're not getting the stack any deeper than 3 levels
-	; anyway
-	ldi		r16, RAMEND;0x08
+	; initialize the stack pointer
+	ldi		r16, RAMEND
 	out		SPL, r16
 
 	; switch to FBus
@@ -611,9 +609,12 @@ SMS_dest_number:	.byte	12
 SMS_VP:				.byte	7
 SMS_user_data:
 
-; Reserve space for the FBus footer.
-.org (RAMEND - 4)
+; Reserve space for the FBus footer (4 bytes) AND the stack (3 levels at most
+; -> 6 bytes).
+.org (RAMEND - 4 - 3 * 2)
 SMS_footer:
+
+; This leaves us with 70 bytes that may be used to store the GPS data.
 
 .eseg
 
